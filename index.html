@@ -1,0 +1,837 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>RutaU – Buses EIA</title>
+<meta name="description" content="Mira en tiempo real por dónde va el bus de tu ruta de la EIA y cuánto le falta para llegar a tu parada.">
+<meta name="theme-color" content="#fafafa">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icono-192.png">
+<link rel="apple-touch-icon" href="icono-192.png">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;450;500&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --fondo: #fafafa;
+    --blanco: #ffffff;
+    --linea: #ebebeb;
+    --anillo: 0 0 0 1px rgba(0,0,0,.08);
+    --tinta: #171717;
+    --cuerpo: #4d4d4d;
+    --suave: #666666;
+    --tenue: #8f8f8f;
+    --apagado: #c9c9c9;
+    --verde: #297a3a;
+    --radio: 6px;
+    --sans: "Geist", "Inter", "Segoe UI", system-ui, sans-serif;
+    --mono: "Geist Mono", "JetBrains Mono", ui-monospace, Consolas, monospace;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
+  body {
+    font-family: var(--sans);
+    font-feature-settings: "calt" 0, "rlig", "ss11";
+    color: var(--tinta);
+    background: var(--fondo);
+    -webkit-font-smoothing: antialiased;
+  }
+  button, a { font: inherit; color: inherit; }
+  a { text-decoration: none; }
+  button { background: none; border: 0; cursor: pointer; text-align: left; }
+
+  .mono {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.071em;
+    text-transform: uppercase;
+    color: var(--suave);
+  }
+  .verde { color: var(--verde); }
+
+  /* ===== Pantallas ===== */
+  .pantalla { display: none; min-height: 100dvh; }
+  .pantalla.activa { display: block; }
+
+  /* ===== Barra superior ===== */
+  .barra {
+    height: 56px;
+    border-bottom: 1px solid var(--linea);
+    background: var(--fondo);
+    position: sticky; top: 0; z-index: 10;
+  }
+  .barra-int {
+    max-width: 640px; height: 100%; margin: 0 auto; padding: 0 16px;
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  }
+  .marca { display: flex; align-items: center; gap: 8px; font-weight: 500; font-size: 15px; letter-spacing: -0.02em; }
+  .marca .logo {
+    width: 22px; height: 22px; border-radius: 5px; background: var(--tinta);
+    display: grid; place-items: center;
+  }
+  .marca .logo svg { width: 13px; height: 13px; fill: #fff; }
+  .etiqueta {
+    font-family: var(--mono); font-size: 10px; font-weight: 500; letter-spacing: 0.071em;
+    border: 1px solid var(--linea); border-radius: 9999px; padding: 2px 8px; color: var(--suave);
+  }
+  .reloj { font-family: var(--mono); font-size: 12px; color: var(--tinta); font-variant-numeric: tabular-nums; }
+
+  .contenedor { max-width: 640px; margin: 0 auto; padding: 0 16px; }
+
+  /* ===== Inicio ===== */
+  .hero { padding: 72px 0 40px; }
+  .hero h1 {
+    font-size: clamp(40px, 9vw, 60px);
+    font-weight: 450;
+    line-height: 1;
+    letter-spacing: -0.06em;
+    margin: 16px 0 20px;
+  }
+  .hero p { font-size: 16px; line-height: 1.5; color: var(--cuerpo); max-width: 460px; }
+
+  .opciones { display: grid; gap: 12px; padding-bottom: 48px; }
+  @media (min-width: 560px) { .opciones { grid-template-columns: 1fr 1fr; } }
+  .opcion {
+    background: var(--blanco);
+    border-radius: var(--radio);
+    box-shadow: var(--anillo);
+    padding: 16px;
+    display: flex; flex-direction: column; gap: 28px;
+    transition: box-shadow .15s ease;
+    min-height: 168px;
+  }
+  .opcion:hover { box-shadow: 0 0 0 1px var(--tinta); }
+  .opcion .arriba { display: flex; justify-content: space-between; align-items: center; }
+  .opcion .flecha { font-size: 18px; color: var(--tenue); transition: transform .15s ease, color .15s ease; }
+  .opcion:hover .flecha { transform: translateX(3px); color: var(--tinta); }
+  .opcion h2 { font-size: 30px; font-weight: 450; letter-spacing: -0.05em; line-height: 1.1; }
+  .opcion p { font-size: 14px; line-height: 1.43; color: var(--suave); margin-top: 6px; }
+
+  .pie { border-top: 1px solid var(--linea); padding: 20px 0 32px; font-size: 12px; line-height: 1.6; color: var(--tenue); }
+
+  /* ===== Lista de rutas ===== */
+  .volver { display: inline-flex; align-items: center; gap: 6px; font-size: 14px; color: var(--suave); padding: 4px 0; }
+  .volver:hover { color: var(--tinta); }
+  .cabeza { padding: 32px 0 24px; }
+  .cabeza h1 { font-size: 40px; font-weight: 450; letter-spacing: -0.05em; line-height: 1.1; margin-top: 12px; }
+  .cabeza .datos { display: flex; flex-wrap: wrap; gap: 6px 18px; margin-top: 14px; }
+
+  .lista { background: var(--blanco); border-radius: var(--radio); box-shadow: var(--anillo); margin-bottom: 16px; }
+  .fila {
+    width: 100%;
+    display: grid; grid-template-columns: 28px 1fr auto 16px; align-items: center; gap: 12px;
+    padding: 16px;
+  }
+  .fila + .fila { border-top: 1px solid var(--linea); }
+  .fila:hover { background: var(--fondo); }
+  .fila .num { font-family: var(--mono); font-size: 11px; color: var(--tenue); }
+  .fila .nombre { font-size: 15px; font-weight: 500; letter-spacing: -0.01em; line-height: 1.3; }
+  .fila .detalle { font-size: 13px; color: var(--suave); margin-top: 2px; }
+  .fila .estado-fila { text-align: right; }
+  .fila .flecha { color: var(--apagado); }
+  .punto { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--verde); margin-right: 6px; vertical-align: 1px; }
+  .aviso { margin: 0 0 40px; }
+
+  /* ===== Mapa ===== */
+  #pantallaMapa.activa { display: flex; flex-direction: column; height: 100dvh; }
+  .zona-mapa { position: relative; flex: 1; min-height: 0; }
+  #mapa { position: absolute; inset: 0; background: #f2f2f2; }
+  .leaflet-container { font-family: var(--sans); }
+  .leaflet-tile-pane { filter: grayscale(1) contrast(1.05); }
+  .leaflet-control-zoom { border: 0 !important; box-shadow: var(--anillo) !important; border-radius: var(--radio) !important; overflow: hidden; }
+  .leaflet-control-zoom a { color: var(--tinta) !important; }
+
+  .panel {
+    position: absolute; z-index: 800;
+    left: 12px; right: 12px; bottom: 12px;
+    background: var(--blanco);
+    border-radius: var(--radio);
+    box-shadow: 0 0 0 1px rgba(0,0,0,.1);
+    max-height: 62%; overflow-y: auto;
+  }
+  @media (min-width: 760px) {
+    .panel { right: auto; width: 380px; top: 12px; bottom: auto; max-height: calc(100% - 24px); }
+  }
+  .panel-sec { padding: 14px 16px; }
+  .panel-sec + .panel-sec { border-top: 1px solid var(--linea); }
+  .tiempos { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .tiempos b { display: block; font-family: var(--mono); font-size: 15px; font-weight: 500; color: var(--tinta); margin-top: 4px; font-variant-numeric: tabular-nums; letter-spacing: 0; text-transform: none; }
+
+  .estado-titulo { font-size: 20px; font-weight: 450; letter-spacing: -0.03em; line-height: 1.2; display: flex; align-items: center; gap: 8px; }
+  .estado-titulo .indicador { width: 8px; height: 8px; border-radius: 50%; background: var(--apagado); flex: none; }
+  .estado-titulo.ok .indicador { background: var(--verde); box-shadow: 0 0 0 4px rgba(41,122,58,.14); }
+  .estado-titulo.cerca .indicador { background: var(--tinta); box-shadow: 0 0 0 4px rgba(0,0,0,.1); animation: latido 1.2s ease-in-out infinite; }
+  .estado-titulo.pasado .indicador { background: var(--tenue); }
+  @keyframes latido { 50% { box-shadow: 0 0 0 7px rgba(0,0,0,.04); } }
+  .estado-sub { font-size: 14px; line-height: 1.43; color: var(--suave); margin-top: 4px; }
+
+  .metricas { display: grid; grid-template-columns: repeat(3, 1fr); }
+  .metricas div { padding: 12px 16px; }
+  .metricas div + div { border-left: 1px solid var(--linea); }
+  .metricas b { display: block; font-size: 22px; font-weight: 450; letter-spacing: -0.04em; margin-top: 4px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+  .acciones { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .btn {
+    display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+    height: 40px; padding: 0 12px; border-radius: var(--radio);
+    font-size: 14px; font-weight: 500; text-decoration: none; white-space: nowrap;
+    background: var(--blanco); color: var(--tinta); box-shadow: 0 0 0 1px var(--linea);
+    transition: box-shadow .15s ease, background .15s ease;
+  }
+  .btn:hover { box-shadow: 0 0 0 1px var(--tinta); }
+  .btn.negro { background: var(--tinta); color: #fff; box-shadow: none; grid-column: 1 / -1; }
+  .btn.negro:hover { background: #383838; }
+  .btn[aria-disabled="true"] { color: var(--apagado); pointer-events: none; }
+  .btn svg { width: 15px; height: 15px; }
+
+  .sim { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+  .sim .mono { margin-right: auto; }
+  .chip {
+    font-family: var(--mono); font-size: 11px; letter-spacing: 0.04em;
+    height: 26px; padding: 0 9px; border-radius: var(--radio);
+    box-shadow: 0 0 0 1px var(--linea); color: var(--suave);
+  }
+  .chip.on { box-shadow: 0 0 0 1px var(--tinta); color: var(--tinta); }
+  .chip:hover { color: var(--tinta); }
+  .enlace { font-size: 13px; color: var(--tinta); text-decoration: underline; text-underline-offset: 3px; text-decoration-color: var(--apagado); }
+
+  @media (max-width: 759px) {
+    .panel { left: 8px; right: 8px; bottom: 8px; max-height: 56%; }
+    .panel-sec { padding: 10px 12px; }
+    .tiempos b { font-size: 13px; }
+    .estado-titulo { font-size: 17px; }
+    .estado-sub { font-size: 13px; }
+    .metricas div { padding: 9px 12px; }
+    .metricas b { font-size: 18px; }
+    .acciones { grid-template-columns: 1fr 1fr 1fr; gap: 6px; }
+    .btn { height: 36px; font-size: 13px; padding: 0 6px; }
+    .btn.negro { grid-column: auto; }
+    .btn .largo { display: none; }
+    .sim { gap: 4px; }
+    .chip { height: 24px; padding: 0 7px; }
+  }
+  .fin-icono.izq { transform: translateX(calc(-100% - 20px)); }
+  .corto { display: none; }
+  @media (max-width: 759px) { .corto { display: inline; } }
+
+  /* tu ruta guardada */
+  .mi-ruta {
+    background: var(--blanco); border-radius: var(--radio); box-shadow: 0 0 0 1px var(--tinta);
+    padding: 16px; margin-bottom: 12px;
+  }
+  .mi-ruta .nombre { font-size: 22px; font-weight: 450; letter-spacing: -0.04em; margin: 8px 0 14px; }
+  .mi-ruta .atajos { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .atajo {
+    display: flex; flex-direction: column; gap: 4px; padding: 10px 12px;
+    border-radius: var(--radio); box-shadow: 0 0 0 1px var(--linea); background: var(--fondo);
+  }
+  .atajo:hover { box-shadow: 0 0 0 1px var(--tinta); }
+  .atajo b { font-size: 14px; font-weight: 500; }
+  .instalar { margin: -24px 0 40px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+  .instalar .btn { width: auto; padding: 0 16px; }
+
+  /* aviso */
+  .fila-aviso { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+  .fila-aviso .txt { font-size: 14px; font-weight: 500; }
+  .fila-aviso .sub { font-size: 12px; color: var(--suave); margin-top: 2px; }
+  .interruptor {
+    flex: none; width: 40px; height: 24px; border-radius: 9999px; background: var(--apagado);
+    position: relative; transition: background .15s ease;
+  }
+  .interruptor::after {
+    content: ""; position: absolute; top: 3px; left: 3px; width: 18px; height: 18px;
+    border-radius: 50%; background: #fff; transition: transform .15s ease;
+  }
+  .interruptor[aria-checked="true"] { background: var(--tinta); }
+  .interruptor[aria-checked="true"]::after { transform: translateX(16px); }
+
+  .toast {
+    position: fixed; z-index: 2000; left: 50%; top: 16px; transform: translate(-50%, calc(-100% - 32px)); visibility: hidden;
+    background: var(--tinta); color: #fff; border-radius: var(--radio);
+    padding: 12px 16px; font-size: 14px; line-height: 1.4; max-width: calc(100% - 32px);
+    transition: transform .25s ease;
+  }
+  .toast.visible { transform: translate(-50%, 0); visibility: visible; }
+  [hidden] { display: none !important; }
+
+  /* barra del mapa */
+  .barra-mapa .barra-int { max-width: none; }
+  .barra-mapa .titulo-ruta { flex: 1; min-width: 0; text-align: center; }
+  .barra-mapa .titulo-ruta div:first-child { font-size: 14px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+  /* marcadores */
+  .bus-icono {
+    width: 32px; height: 32px; border-radius: 8px; background: var(--tinta);
+    box-shadow: 0 0 0 3px #fff, 0 0 0 4px rgba(0,0,0,.15);
+    display: grid; place-items: center;
+  }
+  .bus-icono svg { width: 17px; height: 17px; fill: #fff; }
+  .parada-icono {
+    width: 18px; height: 18px; border-radius: 50%; background: #fff;
+    border: 5px solid var(--tinta); box-shadow: 0 0 0 3px rgba(255,255,255,.9);
+  }
+  .fin-icono {
+    font-family: var(--mono); font-size: 10px; font-weight: 500; letter-spacing: 0.06em; text-transform: uppercase;
+    background: var(--blanco); color: var(--tinta); padding: 3px 7px; border-radius: 4px; white-space: nowrap;
+    box-shadow: 0 0 0 1px rgba(0,0,0,.15);
+  }
+</style>
+</head>
+<body>
+
+<!-- ================= INICIO ================= -->
+<section class="pantalla" id="pantallaInicio">
+  <header class="barra">
+    <div class="barra-int">
+      <div class="marca"><span class="logo"><svg viewBox="0 0 24 24"><path d="M4 16c0 .88.39 1.67 1 2.22V20a1 1 0 0 0 1 1h1a1 1 0 0 0 1-1v-1h8v1a1 1 0 0 0 1 1h1a1 1 0 0 0 1-1v-1.78c.61-.55 1-1.34 1-2.22V6c0-3.5-3.58-4-8-4s-8 .5-8 4v10zm3.5 1a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3zm9 0a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3zM18 11H6V6h12v5z"/></svg></span>RutaU <span class="etiqueta">DEMO</span></div>
+      <span class="reloj" data-reloj>--:--</span>
+    </div>
+  </header>
+
+  <main class="contenedor">
+    <div class="hero">
+      <div class="mono">Buses · Universidad EIA</div>
+      <h1>Sabe dónde va tu bus.</h1>
+      <p>Mira en tiempo real por dónde va el bus de tu ruta, cuánto le falta para llegar a tu parada y si ya pasó.</p>
+    </div>
+
+    <div id="miRuta"></div>
+
+    <div class="opciones">
+      <a class="opcion" href="#/recogida">
+        <div class="arriba"><span class="mono">01 · Recogida</span><span class="flecha">→</span></div>
+        <div>
+          <h2>Hacia la U</h2>
+          <p>En la mañana, desde tu parada hasta la sede Las Palmas.</p>
+        </div>
+      </a>
+      <a class="opcion" href="#/salida">
+        <div class="arriba"><span class="mono">02 · Salida</span><span class="flecha">→</span></div>
+        <div>
+          <h2>Desde la U</h2>
+          <p>Al terminar clases, desde la sede Las Palmas hacia tu casa.</p>
+        </div>
+      </a>
+    </div>
+
+    <div class="instalar" id="zonaInstalar" hidden>
+      <button class="btn" id="btnInstalar">Instalar en el celular</button>
+      <span class="mono">Funciona como una app</span>
+    </div>
+
+    <footer class="pie">Proyecto independiente de demostración hecho por Pablo Ortiz Ochoa. No es una app oficial de la Universidad EIA. Los recorridos son los que publica la universidad.<br>En iPhone: botón Compartir → «Agregar a inicio» para tenerla como app.</footer>
+  </main>
+</section>
+
+<!-- ================= RUTAS ================= -->
+<section class="pantalla" id="pantallaRutas">
+  <header class="barra">
+    <div class="barra-int">
+      <a class="volver" href="#/">← Inicio</a>
+      <span class="reloj" data-reloj>--:--</span>
+    </div>
+  </header>
+
+  <main class="contenedor">
+    <div class="cabeza">
+      <div class="mono" id="rutasEyebrow">Recogida · Hacia la U</div>
+      <h1>Elige tu ruta</h1>
+      <div class="datos">
+        <span class="mono">Hora actual <b class="reloj" data-reloj>--:--</b></span>
+      </div>
+    </div>
+    <div class="lista" id="lista"></div>
+    <p class="mono aviso" id="avisoHorarios"></p>
+  </main>
+</section>
+
+<!-- ================= MAPA ================= -->
+<section class="pantalla" id="pantallaMapa">
+  <header class="barra barra-mapa">
+    <div class="barra-int">
+      <a class="volver" id="volverRutas" href="#/recogida">← Rutas</a>
+      <div class="titulo-ruta">
+        <div id="mapaNombre">Ruta</div>
+        <div class="mono" id="mapaSentido">Hacia la U</div>
+      </div>
+      <span class="reloj" data-reloj>--:--</span>
+    </div>
+  </header>
+
+  <div class="zona-mapa">
+    <div id="mapa"></div>
+
+    <section class="panel" aria-live="polite">
+      <div class="panel-sec tiempos">
+        <div class="mono"><span id="lblHora">Hora actual</span><b id="tHora">--:--</b></div>
+        <div class="mono"><span id="lblSalida">Salida del bus</span><b id="tSalida">--:--</b></div>
+      </div>
+
+      <div class="panel-sec">
+        <div class="estado-titulo" id="estado"><span class="indicador"></span><span id="estadoTexto">Marca tu parada</span></div>
+        <div class="estado-sub" id="estadoSub">Usa tu ubicación o toca el mapa donde esperas el bus.</div>
+      </div>
+
+      <div class="panel-sec fila-aviso" id="filaAviso" hidden>
+        <div>
+          <div class="txt">Avísame 5 min antes</div>
+          <div class="sub" id="avisoSub">Te llega una notificación cuando el bus esté cerca.</div>
+        </div>
+        <button class="interruptor" id="btnAviso" role="switch" aria-checked="false" aria-label="Avisarme cuando el bus esté a 5 minutos"></button>
+      </div>
+
+      <div class="metricas" style="border-top:1px solid var(--linea)">
+        <div><span class="mono">Distancia</span><b id="mDist">–</b></div>
+        <div><span class="mono">Llega en</span><b id="mEta">–</b></div>
+        <div><span class="mono">Hora aprox.</span><b id="mHora">–</b></div>
+      </div>
+
+      <div class="panel-sec acciones">
+        <button class="btn negro" id="btnUbicacion">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8zm9 3h-2.07A7 7 0 0 0 13 5.07V3h-2v2.07A7 7 0 0 0 5.07 11H3v2h2.07A7 7 0 0 0 11 18.93V21h2v-2.07A7 7 0 0 0 18.93 13H21v-2zm-9 6a5 5 0 1 1 0-10 5 5 0 0 1 0 10z"/></svg>
+          <span class="largo">Usar mi ubicación</span><span class="corto">Ubicación</span>
+        </button>
+        <a class="btn" id="btnGoogle" target="_blank" rel="noopener" aria-disabled="true" title="Tiempo con tráfico real, desde el bus hasta tu parada"><span class="largo">Google</span> Maps ↗</a>
+        <a class="btn" id="btnWaze" target="_blank" rel="noopener" title="Ver dónde está el bus en Waze">Waze ↗</a>
+      </div>
+
+      <div class="panel-sec sim" id="zonaSim">
+        <span class="mono" id="simTexto">¿El bus no está en camino?</span>
+        <button class="enlace" id="btnSimular">Ver simulación</button>
+      </div>
+    </section>
+  </div>
+</section>
+
+<div class="toast" id="toast" role="status"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="rutas.js"></script>
+<script src="horarios.js"></script>
+<script>
+(() => {
+  // ================= Configuración =================
+  const VEL = 6.5;            // m/s (~23 km/h): velocidad promedio del bus para estimar tiempos
+  const MARGEN_PASO = 30;     // m: desde aquí se considera que el bus ya pasó
+  const MAX_FUERA_RUTA = 400; // m: si marcas un punto más lejos, te avisamos
+
+  const SENTIDOS = {
+    recogida: { titulo: 'Recogida · Hacia la U', corto: 'Hacia la U' },
+    salida:   { titulo: 'Salida · Desde la U',   corto: 'Desde la U' }
+  };
+
+  // ================= Utilidades =================
+  const $ = id => document.getElementById(id);
+  const R = 6371000, rad = d => d * Math.PI / 180;
+  function distancia(a, b) {
+    const dLa = rad(b[0] - a[0]), dLo = rad(b[1] - a[1]);
+    const h = Math.sin(dLa / 2) ** 2 + Math.cos(rad(a[0])) * Math.cos(rad(b[0])) * Math.sin(dLo / 2) ** 2;
+    return 2 * R * Math.asin(Math.sqrt(h));
+  }
+  function prepararLinea(pts) {
+    const acum = [0];
+    for (let i = 1; i < pts.length; i++) acum.push(acum[i - 1] + distancia(pts[i - 1], pts[i]));
+    return { pts, acum, largo: acum[acum.length - 1] };
+  }
+  function puntoEn(L, s) {
+    s = Math.max(0, Math.min(L.largo, s));
+    let lo = 0, hi = L.acum.length - 1;
+    while (hi - lo > 1) { const m = (lo + hi) >> 1; if (L.acum[m] <= s) lo = m; else hi = m; }
+    const t = (s - L.acum[lo]) / ((L.acum[hi] - L.acum[lo]) || 1);
+    const a = L.pts[lo], b = L.pts[hi];
+    return [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t];
+  }
+  function proyectar(L, p) {
+    const k = Math.cos(rad(p[0])), M = 111320;
+    let mejor = { d: Infinity };
+    for (let i = 0; i < L.pts.length - 1; i++) {
+      const a = L.pts[i], b = L.pts[i + 1];
+      const ax = a[1] * k, ay = a[0], bx = b[1] * k, by = b[0], px = p[1] * k, py = p[0];
+      const dx = bx - ax, dy = by - ay, l2 = dx * dx + dy * dy;
+      const t = l2 ? Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / l2)) : 0;
+      const d = Math.hypot(px - (ax + t * dx), py - (ay + t * dy)) * M;
+      if (d < mejor.d) {
+        const q = [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t];
+        mejor = { d, punto: q, s: L.acum[i] + distancia(a, q) };
+      }
+    }
+    return mejor;
+  }
+  const fmtDist = m => m < 1000 ? `${Math.round(m / 10) * 10} m` : `${(m / 1000).toFixed(1).replace('.', ',')} km`;
+  const fmtMin = s => s < 60 ? '< 1 min' : s < 3600 ? `${Math.round(s / 60)} min` : `${Math.floor(s / 3600)} h ${Math.round((s % 3600) / 60)} min`;
+  const fmtHora = d => d.toLocaleTimeString('es-CO', { hour: 'numeric', minute: '2-digit' });
+  const fmtHoraSeg = d => d.toLocaleTimeString('es-CO', { hour: 'numeric', minute: '2-digit', second: '2-digit' });
+
+  // ================= Memoria del celular (ruta y parada guardadas) =================
+  const leer = k => { try { return JSON.parse(localStorage.getItem('rutaU.' + k)); } catch { return null; } };
+  const escribir = (k, v) => { try { localStorage.setItem('rutaU.' + k, JSON.stringify(v)); } catch {} };
+
+  // ================= Mensajes y notificaciones =================
+  let temporizadorToast;
+  function mostrarToast(texto) {
+    const t = $('toast');
+    t.textContent = texto; t.classList.add('visible');
+    clearTimeout(temporizadorToast);
+    temporizadorToast = setTimeout(() => t.classList.remove('visible'), 6000);
+  }
+  async function notificar(titulo, cuerpo) {
+    mostrarToast(`${titulo}. ${cuerpo}`);
+    try { navigator.vibrate && navigator.vibrate([200, 100, 200]); } catch {}
+    try {
+      if (!('Notification' in window) || Notification.permission !== 'granted') return;
+      const opciones = { body: cuerpo, icon: 'icono-192.png', badge: 'icono-192.png', tag: 'rutau-bus' };
+      const reg = 'serviceWorker' in navigator ? await navigator.serviceWorker.getRegistration() : null;
+      if (reg) await reg.showNotification(titulo, opciones);
+      else new Notification(titulo, opciones);
+    } catch {}
+  }
+
+  // ================= Horarios =================
+  const rutaPorId = id => window.RUTAS.find(r => r.id === id);
+  const duracion = r => r.largo_m / VEL * 1000; // ms
+  function salidasHoy(sentido, id, base = new Date()) {
+    return (window.HORARIOS[sentido][id] || []).map(h => {
+      const [hh, mm] = h.split(':').map(Number);
+      const d = new Date(base); d.setHours(hh, mm, 0, 0); return d;
+    });
+  }
+  // ¿Hay un bus en camino ahora? ¿Cuál es el próximo?
+  function viajeActual(sentido, r, ahora) {
+    const salidas = salidasHoy(sentido, r.id, ahora);
+    for (const s of salidas) if (ahora >= s && ahora - s < duracion(r)) return { tipo: 'activo', salida: s };
+    const prox = salidas.find(s => s > ahora);
+    if (prox) return { tipo: 'proximo', salida: prox };
+    return { tipo: 'terminado', salida: salidas[salidas.length - 1] || null };
+  }
+
+  // ================= Reloj de la página =================
+  let modoSim = false, relojSim = null;
+  function horaVisible() { return modoSim ? relojSim : new Date(); }
+  function pintarRelojes() {
+    const t = fmtHoraSeg(new Date());
+    document.querySelectorAll('[data-reloj]').forEach(el => el.textContent = t);
+  }
+  setInterval(pintarRelojes, 1000); pintarRelojes();
+
+  // ================= Navegación =================
+  let sentidoActual = 'recogida';
+  function irA() {
+    const partes = location.hash.replace(/^#\/?/, '').split('/').filter(Boolean);
+    document.querySelectorAll('.pantalla').forEach(p => p.classList.remove('activa'));
+    if (partes[0] && SENTIDOS[partes[0]]) {
+      sentidoActual = partes[0];
+      const r = partes[1] && rutaPorId(partes[1]);
+      if (r) { $('pantallaMapa').classList.add('activa'); abrirMapa(r); }
+      else { $('pantallaRutas').classList.add('activa'); pintarLista(); detenerMapa(); }
+    } else {
+      $('pantallaInicio').classList.add('activa'); detenerMapa(); pintarInicio();
+    }
+    window.scrollTo(0, 0);
+  }
+  window.addEventListener('hashchange', irA);
+
+  // ================= Tu ruta (en el inicio) =================
+  const textoEstado = v => v.tipo === 'activo' ? '<span class="verde"><span class="punto"></span>En camino</span>'
+    : v.tipo === 'proximo' ? `Sale ${fmtHora(v.salida)}` : 'Sin más salidas hoy';
+  function pintarInicio() {
+    const u = leer('ultima'), r = u && rutaPorId(u.id);
+    if (!r) { $('miRuta').innerHTML = ''; return; }
+    const ahora = new Date();
+    $('miRuta').innerHTML = `<div class="mi-ruta">
+      <span class="mono">Tu ruta${leer('parada.' + r.id) ? ' · parada guardada' : ''}</span>
+      <div class="nombre">${r.nombre}</div>
+      <div class="atajos">
+        ${['recogida', 'salida'].map(s => `<a class="atajo" href="#/${s}/${r.id}">
+          <b>${SENTIDOS[s].corto} →</b>
+          <span class="mono">${textoEstado(viajeActual(s, r, ahora))}</span>
+        </a>`).join('')}
+      </div>
+    </div>`;
+  }
+  setInterval(() => { if ($('pantallaInicio').classList.contains('activa')) pintarInicio(); }, 15000);
+
+  // ================= Lista de rutas =================
+  function pintarLista() {
+    $('rutasEyebrow').textContent = SENTIDOS[sentidoActual].titulo;
+    $('avisoHorarios').textContent = `${window.HORARIOS.semana} · Se actualizan cada semana`;
+    const ahora = new Date();
+    $('lista').innerHTML = window.RUTAS.map((r, i) => {
+      const v = viajeActual(sentidoActual, r, ahora);
+      const estado = `<span class="mono"${v.tipo === 'terminado' ? ' style="color:var(--apagado)"' : ''}>${textoEstado(v)}</span>`;
+      const mia = (leer('ultima') || {}).id === r.id;
+      return `<a class="fila" href="#/${sentidoActual}/${r.id}">
+        <span class="num">${String(i + 1).padStart(2, '0')}</span>
+        <span><div class="nombre">${r.nombre}${mia ? ' <span class="etiqueta">TU RUTA</span>' : ''}</div><div class="detalle">${fmtDist(r.largo_m)} · ~${Math.round(duracion(r) / 60000)} min de recorrido</div></span>
+        <span class="estado-fila">${estado}</span>
+        <span class="flecha">→</span>
+      </a>`;
+    }).join('');
+  }
+  setInterval(() => { if ($('pantallaRutas').classList.contains('activa')) pintarLista(); }, 15000);
+
+  // ================= Mapa =================
+  let mapa = null, capaRuta, marcadorBus, marcadorParada = null;
+  let ruta, linea, parada = null, animando = false;
+  let busS = 0, salida = null, tipoViaje = 'proximo';
+  // simulación
+  let velSim = 0, velEstSim = VEL, pausaHasta = 0, multiplicador = 10, pasoSimA = null;
+  // aviso de "tu bus está a 5 minutos"
+  const AVISO_SEG = 5 * 60;
+  let avisoActivo = leer('aviso') === true, avisado = false;
+
+  const iconoBus = L.divIcon({
+    className: '', iconSize: [32, 32], iconAnchor: [16, 16],
+    html: '<div class="bus-icono"><svg viewBox="0 0 24 24"><path d="M4 16c0 .88.39 1.67 1 2.22V20a1 1 0 0 0 1 1h1a1 1 0 0 0 1-1v-1h8v1a1 1 0 0 0 1 1h1a1 1 0 0 0 1-1v-1.78c.61-.55 1-1.34 1-2.22V6c0-3.5-3.58-4-8-4s-8 .5-8 4v10zm3.5 1a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3zm9 0a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3zM18 11H6V6h12v5z"/></svg></div>'
+  });
+  const iconoParada = L.divIcon({ className: '', iconSize: [18, 18], iconAnchor: [9, 9], html: '<div class="parada-icono"></div>' });
+  const etiqueta = (txt, izq) => L.divIcon({ className: '', iconSize: null, iconAnchor: [-10, 10], html: `<div class="fin-icono${izq ? ' izq' : ''}">${txt}</div>` });
+
+  function crearMapa() {
+    mapa = L.map('mapa', { zoomControl: false, fadeAnimation: false });
+    L.control.zoom({ position: 'topright' }).addTo(mapa);
+    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19, attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+    }).addTo(mapa);
+    capaRuta = L.layerGroup().addTo(mapa);
+    marcadorBus = L.marker([6.2, -75.5], { icon: iconoBus, zIndexOffset: 1000 }).addTo(mapa);
+    mapa.on('click', e => fijarParada([e.latlng.lat, e.latlng.lng]));
+  }
+
+  function abrirMapa(r) {
+    if (!mapa) crearMapa();
+    ruta = r;
+    salirSim(false);
+    $('mapaNombre').textContent = r.nombre;
+    $('mapaSentido').textContent = SENTIDOS[sentidoActual].corto;
+    $('volverRutas').href = `#/${sentidoActual}`;
+
+    const pts = sentidoActual === 'recogida' ? r.linea : [...r.linea].reverse();
+    linea = prepararLinea(pts);
+    capaRuta.clearLayers();
+    L.polyline(pts, { color: '#ffffff', weight: 8, opacity: 0.95 }).addTo(capaRuta);
+    L.polyline(pts, { color: '#171717', weight: 4 }).addTo(capaRuta);
+    // La sede Las Palmas queda al oriente: su etiqueta va a la izquierda para que no se salga de la pantalla
+    L.marker(pts[0], { icon: etiqueta(sentidoActual === 'recogida' ? 'Inicio' : 'EIA', sentidoActual !== 'recogida'), interactive: false }).addTo(capaRuta);
+    L.marker(pts[pts.length - 1], { icon: etiqueta(sentidoActual === 'recogida' ? 'EIA Las Palmas' : 'Fin', sentidoActual === 'recogida'), interactive: false }).addTo(capaRuta);
+    r.puntos.filter(p => /parad/i.test(p.nombre)).forEach(p =>
+      L.circleMarker([p.lat, p.lng], { radius: 3.5, color: '#fff', weight: 2, fillColor: '#171717', fillOpacity: 1 })
+        .bindTooltip(p.nombre).addTo(capaRuta));
+
+    // Recupera la parada que guardaste para esta ruta (sirve en los dos sentidos)
+    escribir('ultima', { id: r.id, sentido: sentidoActual });
+    const guardada = leer('parada.' + r.id);
+    if (guardada) fijarParada(guardada, false); else quitarParada();
+    avisado = false;
+
+    requestAnimationFrame(() => {
+      mapa.invalidateSize();
+      const ancho = window.innerWidth >= 760, alto = document.querySelector('.panel').offsetHeight;
+      mapa.fitBounds(L.latLngBounds(pts), {
+        paddingTopLeft: ancho ? [410, 30] : [20, 20],
+        paddingBottomRight: ancho ? [60, 30] : [60, alto + 30]
+      });
+    });
+    if (!animando) { animando = true; ultimo = performance.now(); requestAnimationFrame(cuadro); }
+  }
+  function detenerMapa() { animando = false; salirSim(false); }
+
+  function quitarParada() {
+    parada = null;
+    if (marcadorParada) { mapa.removeLayer(marcadorParada); marcadorParada = null; }
+    $('btnGoogle').setAttribute('aria-disabled', 'true');
+  }
+  function fijarParada(latlng, pintarYa = true) {
+    const p = proyectar(linea, latlng);
+    parada = { s: p.s, punto: p.punto, lejos: p.d, original: latlng };
+    escribir('parada.' + ruta.id, latlng);
+    avisado = false;
+    if (marcadorParada) marcadorParada.setLatLng(p.punto);
+    else marcadorParada = L.marker(p.punto, { icon: iconoParada, draggable: true, zIndexOffset: 500 }).addTo(mapa)
+      .on('dragend', e => { const ll = e.target.getLatLng(); fijarParada([ll.lat, ll.lng]); });
+    $('btnGoogle').setAttribute('aria-disabled', 'false');
+    pasoSimA = modoSim && busS > parada.s + MARGEN_PASO ? relojSim : null;
+    ultimoLink = 0;
+    if (pintarYa) pintar();
+  }
+
+  // ---------- Simulación ----------
+  function iniciarSim() {
+    modoSim = true;
+    relojSim = new Date(); salida = new Date(relojSim);
+    busS = 0; velSim = 0; velEstSim = VEL; pausaHasta = 0; pasoSimA = null;
+    $('zonaSim').innerHTML = `<span class="mono">Simulación</span>
+      ${[1, 10, 30].map(x => `<button class="chip ${x === multiplicador ? 'on' : ''}" data-x="${x}">${x}×</button>`).join('')}
+      <button class="chip" id="btnReiniciar">Reiniciar</button>
+      <button class="chip" id="btnSalirSim">Salir</button>`;
+    $('zonaSim').querySelectorAll('[data-x]').forEach(b => b.onclick = () => {
+      multiplicador = +b.dataset.x;
+      $('zonaSim').querySelectorAll('[data-x]').forEach(x => x.classList.toggle('on', x === b));
+    });
+    $('btnReiniciar').onclick = iniciarSim;
+    $('btnSalirSim').onclick = () => salirSim(true);
+    $('lblHora').textContent = 'Hora simulada';
+  }
+  function salirSim(pintarYa) {
+    modoSim = false;
+    $('zonaSim').innerHTML = `<span class="mono" id="simTexto">¿Quieres ver cómo funciona?</span><button class="enlace" id="btnSimular">Ver simulación</button>`;
+    $('btnSimular').onclick = iniciarSim;
+    $('lblHora').textContent = 'Hora actual';
+    if (pintarYa) pintar();
+  }
+  function avanzarSim(dt) {
+    relojSim = new Date(relojSim.getTime() + dt * 1000);
+    if (busS >= linea.largo) return;
+    if (relojSim.getTime() < pausaHasta) velSim = 0;
+    else {
+      const objetivo = 5 + 4 * (0.5 + 0.5 * Math.sin(busS / 900));
+      velSim += (objetivo - velSim) * Math.min(1, dt * 0.3);
+      if (Math.random() < dt / 120) pausaHasta = relojSim.getTime() + (20 + Math.random() * 40) * 1000;
+    }
+    busS = Math.min(linea.largo, busS + velSim * dt);
+    velEstSim += (Math.max(3, velSim) - velEstSim) * Math.min(1, dt * 0.01);
+    if (parada && !pasoSimA && busS > parada.s + MARGEN_PASO) pasoSimA = relojSim;
+  }
+
+  // ---------- Bucle ----------
+  let ultimo = performance.now(), ultimoPintado = 0;
+  function cuadro(t) {
+    if (!animando) return;
+    let pendiente = Math.min(5, (t - ultimo) / 1000);
+    ultimo = t;
+    if (modoSim) {
+      while (pendiente > 0) { const d = Math.min(0.25, pendiente); pendiente -= d; avanzarSim(d * multiplicador); }
+      tipoViaje = busS >= linea.largo ? 'llego' : 'activo';
+    }
+    if (t - ultimoPintado > 100) { ultimoPintado = t; pintar(); }
+    requestAnimationFrame(cuadro);
+  }
+  // Modo horario: la posición sale de la hora de salida programada.
+  // En la versión real, aquí llegaría la posición GPS del celular del conductor.
+  function actualizarHorario() {
+    const ahora = new Date();
+    const v = viajeActual(sentidoActual, ruta, ahora);
+    tipoViaje = v.tipo; salida = v.salida;
+    busS = v.tipo === 'activo' ? (ahora - v.salida) / 1000 * VEL : v.tipo === 'terminado' ? linea.largo : 0;
+  }
+
+  // ---------- Pintar ----------
+  let ultimoLink = 0;
+  function pintar() {
+    if (!linea) return;
+    if (!modoSim) actualizarHorario();
+    const ahora = horaVisible();
+    const vel = modoSim ? velEstSim : VEL;
+    const posBus = puntoEn(linea, busS);
+    marcadorBus.setLatLng(posBus);
+    marcadorBus.setOpacity(tipoViaje === 'activo' || tipoViaje === 'llego' ? 1 : 0.35);
+
+    $('tHora').textContent = fmtHoraSeg(ahora);
+    $('lblSalida').textContent = tipoViaje === 'proximo' ? 'Próxima salida' : 'Salida del bus';
+    $('tSalida').textContent = salida ? fmtHora(salida) : '—';
+
+    const est = $('estado');
+    const poner = (clase, titulo, sub, d, e, h) => {
+      est.className = 'estado-titulo ' + clase;
+      $('estadoTexto').textContent = titulo; $('estadoSub').textContent = sub;
+      $('mDist').textContent = d; $('mEta').textContent = e; $('mHora').textContent = h;
+    };
+    let mostrarAviso = false;
+
+    if (tipoViaje === 'terminado') {
+      poner('pasado', 'No hay más salidas hoy', 'El último bus de esta ruta ya terminó su recorrido. Puedes ver una simulación abajo.', '–', '–', '–');
+    } else if (!parada) {
+      const sub = tipoViaje === 'proximo' ? `El bus sale a las ${fmtHora(salida)}. Marca tu parada tocando el mapa o con tu ubicación.`
+        : 'Usa tu ubicación o toca el mapa donde esperas el bus.';
+      poner(tipoViaje === 'activo' ? 'ok' : '', tipoViaje === 'activo' ? 'El bus está en camino' : 'Marca tu parada', sub, '–', '–', '–');
+    } else {
+      const pasaPor = parada.s;
+      const yaPaso = busS > pasaPor + MARGEN_PASO;
+      if (yaPaso) {
+        const hora = modoSim ? (pasoSimA || ahora) : new Date(salida.getTime() + pasaPor / VEL * 1000);
+        poner('pasado', 'El bus ya pasó por tu parada', `Pasó hace ${fmtMin((ahora - hora) / 1000)}, a las ${fmtHora(hora)}.`, fmtDist(busS - pasaPor), '—', fmtHora(hora));
+      } else if (tipoViaje === 'proximo') {
+        const eta = (salida - ahora) / 1000 + pasaPor / VEL;
+        mostrarAviso = true;
+        poner('', 'El bus todavía no sale', `Sale a las ${fmtHora(salida)} y pasaría por tu parada a las ${fmtHora(new Date(ahora.getTime() + eta * 1000))}.`,
+          fmtDist(pasaPor), fmtMin(eta), fmtHora(new Date(ahora.getTime() + eta * 1000)));
+      } else {
+        const falta = pasaPor - busS, eta = falta / vel;
+        mostrarAviso = true;
+        if (avisoActivo && !avisado && eta <= AVISO_SEG) {
+          avisado = true;
+          notificar('Tu bus está cerca', `${ruta.nombre}: llega a tu parada en ${fmtMin(eta)}. Sal a la parada.`);
+        }
+        const sub = modoSim && velSim < 0.5 && busS > 0 ? 'El bus está detenido en este momento.'
+          : parada.lejos > MAX_FUERA_RUTA ? `Estás a ${fmtDist(parada.lejos)} de la ruta; usamos el punto más cercano.`
+          : 'Distancia medida por la ruta del bus, no en línea recta.';
+        poner(eta < 300 ? 'cerca' : 'ok', eta < 60 ? 'El bus está llegando' : eta < 300 ? 'Está cerca, sal a la parada' : 'El bus viene en camino',
+          sub, fmtDist(falta), fmtMin(eta), fmtHora(new Date(ahora.getTime() + eta * 1000)));
+      }
+    }
+
+    $('filaAviso').hidden = !mostrarAviso;
+
+    const t = performance.now();
+    if (t - ultimoLink > 2000) {
+      ultimoLink = t;
+      const b = posBus.map(v => v.toFixed(5)).join(',');
+      $('btnWaze').href = `https://waze.com/ul?ll=${b}&navigate=no&zoom=16`;
+      if (parada) {
+        const p = parada.punto.map(v => v.toFixed(5)).join(',');
+        $('btnGoogle').href = `https://www.google.com/maps/dir/?api=1&origin=${b}&destination=${p}&travelmode=driving`;
+      }
+    }
+  }
+
+  // ================= Eventos =================
+  $('btnUbicacion').addEventListener('click', () => {
+    if (!navigator.geolocation) { alert('Tu navegador no permite compartir la ubicación.'); return; }
+    navigator.geolocation.getCurrentPosition(
+      pos => { fijarParada([pos.coords.latitude, pos.coords.longitude]); mapa.panTo(parada.punto); },
+      () => alert('No pudimos obtener tu ubicación. Puedes tocar el mapa para marcar tu parada.'),
+      { enableHighAccuracy: true, timeout: 10000 }
+    );
+  });
+  // Interruptor del aviso
+  function pintarAviso() {
+    $('btnAviso').setAttribute('aria-checked', String(avisoActivo));
+    const bloqueado = 'Notification' in window && Notification.permission === 'denied';
+    $('avisoSub').textContent = !avisoActivo ? 'Te llega una notificación cuando el bus esté cerca.'
+      : bloqueado ? 'Tu navegador bloqueó las notificaciones: te avisamos aquí dentro, con la app abierta.'
+      : 'Activado. Deja la app abierta y te avisamos.';
+  }
+  $('btnAviso').addEventListener('click', async () => {
+    if (!avisoActivo && 'Notification' in window && Notification.permission === 'default') {
+      try { await Notification.requestPermission(); } catch {}
+    }
+    avisoActivo = !avisoActivo; avisado = false;
+    escribir('aviso', avisoActivo);
+    pintarAviso();
+  });
+  pintarAviso();
+
+  // Instalar como app (Android / Chrome / Edge)
+  let promptInstalar = null;
+  window.addEventListener('beforeinstallprompt', e => {
+    e.preventDefault(); promptInstalar = e; $('zonaInstalar').hidden = false;
+  });
+  $('btnInstalar').addEventListener('click', async () => {
+    if (!promptInstalar) return;
+    promptInstalar.prompt();
+    await promptInstalar.userChoice;
+    promptInstalar = null; $('zonaInstalar').hidden = true;
+  });
+  window.addEventListener('appinstalled', () => { $('zonaInstalar').hidden = true; });
+  if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
+
+  salirSim(false);
+  irA();
+
+  // Acceso para pruebas desde la consola del navegador
+  window.rutaU = { fijarParada, iniciarSim, estado: () => ({ busS, tipoViaje, salida, parada, modoSim }) };
+})();
+</script>
+</body>
+</html>

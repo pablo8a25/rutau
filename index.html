@@ -493,8 +493,16 @@
   // ================= Horarios =================
   const rutaPorId = id => window.RUTAS.find(r => r.id === id);
   const duracion = r => r.largo_m / VEL * 1000; // ms
+  // Horario del día: lunes a jueves usan "semana"; viernes usa "viernes" si existe; sábado y domingo los suyos
+  function horarioDelDia(sentido, fecha) {
+    const t = window.HORARIOS[sentido], dia = fecha.getDay();
+    if (dia === 0) return t.domingo || {};
+    if (dia === 6) return t.sabado || {};
+    if (dia === 5) return t.viernes || t.semana || {};
+    return t.semana || {};
+  }
   function salidasHoy(sentido, id, base = new Date()) {
-    return (window.HORARIOS[sentido][id] || []).map(h => {
+    return (horarioDelDia(sentido, base)[id] || []).map(h => {
       const [hh, mm] = h.split(':').map(Number);
       const d = new Date(base); d.setHours(hh, mm, 0, 0); return d;
     });
@@ -502,6 +510,7 @@
   // ¿Hay un bus en camino ahora? ¿Cuál es el próximo?
   function viajeActual(sentido, r, ahora) {
     const salidas = salidasHoy(sentido, r.id, ahora);
+    if (!salidas.length) return { tipo: 'terminado', salida: null, ninguna: true };
     for (const s of salidas) if (ahora >= s && ahora - s < duracion(r)) return { tipo: 'activo', salida: s };
     const prox = salidas.find(s => s > ahora);
     if (prox) return { tipo: 'proximo', salida: prox };
@@ -536,7 +545,7 @@
 
   // ================= Tu ruta (en el inicio) =================
   const textoEstado = v => v.tipo === 'activo' ? '<span class="verde"><span class="punto"></span>En camino</span>'
-    : v.tipo === 'proximo' ? `Sale ${fmtHora(v.salida)}` : 'Sin más salidas hoy';
+    : v.tipo === 'proximo' ? `Sale ${fmtHora(v.salida)}` : v.ninguna ? 'Hoy no hay salidas' : 'Sin más salidas hoy';
   function pintarInicio() {
     const u = leer('ultima'), r = u && rutaPorId(u.id);
     if (!r) { $('miRuta').innerHTML = ''; return; }
@@ -742,7 +751,8 @@
     let mostrarAviso = false;
 
     if (tipoViaje === 'terminado') {
-      poner('pasado', 'No hay más salidas hoy', 'El último bus de esta ruta ya terminó su recorrido. Puedes ver una simulación abajo.', '–', '–', '–');
+      if (!salida) poner('pasado', 'Hoy no hay salidas', 'Esta ruta no tiene buses hoy en este sentido. Puedes ver una simulación abajo.', '–', '–', '–');
+      else poner('pasado', 'No hay más salidas hoy', 'El último bus de esta ruta ya terminó su recorrido. Puedes ver una simulación abajo.', '–', '–', '–');
     } else if (!parada) {
       const sub = tipoViaje === 'proximo' ? `El bus sale a las ${fmtHora(salida)}. Marca tu parada tocando el mapa o con tu ubicación.`
         : 'Usa tu ubicación o toca el mapa donde esperas el bus.';

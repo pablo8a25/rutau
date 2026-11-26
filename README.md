@@ -10,7 +10,7 @@ App web para saber **por dónde va el bus de tu ruta** de la Universidad EIA, **
 
 - Las 7 rutas de la EIA (Mayorca, Sofasa – Aguacatala – Bosques de Zúñiga, Clínica Las Américas – Palacé, San Antonio – Loreto, Rionegro, Éxito de Robledo y Mayorca – Bosques de Zúñiga Unificada), trazadas sobre las calles reales a partir de los mapas que publica la universidad.
 - Recogida (hacia la U) y salida (desde la U).
-- Hora actual y hora de salida de cada bus, según el horario de la semana.
+- Hora actual y hora de salida de cada bus, según el horario del día (lunes a jueves, viernes y sábado pueden ser distintos). Hoy usa como ejemplo el horario real de la semana del 26 al 31 de octubre de 2026.
 - Distancia del bus a tu parada (medida por la ruta, no en línea recta), tiempo estimado y hora aproximada de llegada.
 - Aviso de "el bus ya pasó por tu parada".
 - Notificación cuando el bus está a 5 minutos.
@@ -31,7 +31,7 @@ App web para saber **por dónde va el bus de tu ruta** de la Universidad EIA, **
 |---|---|
 | `index.html` | La app completa |
 | `rutas.js` | Recorrido de cada ruta |
-| `horarios.js` | Horarios de salida. **Se actualiza cada semana.** |
+| `horarios.js` | Horarios de salida por día, copiados de la publicación semanal de @eiabienestar. **Se actualiza cada semana.** |
 | `sw.js`, `manifest.webmanifest` | Para instalarla como app |
 
 ## Estado actual

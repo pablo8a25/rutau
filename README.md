@@ -2,6 +2,8 @@
 
 App web para saber **por dónde va el bus de tu ruta** de la Universidad EIA, **cuánto le falta para llegar a tu parada** y **si ya pasó**.
 
+**En línea:** https://rutau.vercel.app (la dirección vieja de GitHub Pages redirige aquí)
+
 > Proyecto independiente de demostración. No es una app oficial de la Universidad EIA.
 
 ## Qué hace
